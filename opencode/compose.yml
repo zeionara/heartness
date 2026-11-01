@@ -17,6 +17,9 @@ services:
       - $HOME/.cache/opencode:/home/zeio/.cache/opencode
       - $HOME/.cache/huggingface/hub:/home/zeio/.cache/huggingface/hub
       - $HOME/.opencode-mem:/home/zeio/.opencode-mem
+      # projects
+      - /opt/lumin:/opt/lumin
+      - $HOME/.cache/opencode-venv/lumin:/opt/lumin/.venv
     ports:
       - 4747:4747  # opencode-mem UI
     env_file:
