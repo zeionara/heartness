@@ -1,0 +1,5 @@
+{
+  "webServerHost": "0.0.0.0", // optional: reach the UI from the LAN
+  "webServerAuthPassword": "password",
+  "webServerAuthUsername": "username", // optional, defaults to the current OS user
+}

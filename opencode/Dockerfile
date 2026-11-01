@@ -8,14 +8,14 @@ from nvcr.io/nvidia/cuda:$CUDA_VERSION-cudnn-devel-ubuntu$UBUNTU_VERSION
 # Install system dependencies
 
 run apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv git curl ca-certificates sudo && \
+    apt-get install -y python3 python3-pip python3-venv git curl ca-certificates nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 
 # Set root password
 
 run --mount=type=secret,id=ROOT_PASSWORD,required=true \
     export ROOT_PASSWORD="$(cat /run/secrets/ROOT_PASSWORD)" && \
-    echo "root:${ROOT_PASSWORD}"
+    echo "root:${ROOT_PASSWORD}" | chpasswd
 
 # Configure file permissions
 

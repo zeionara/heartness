@@ -3,6 +3,21 @@ services:
     image: zeio.ru/heartness:opencode-$OPENCODE_VERSION
     container_name: opencode
     restart: unless-stopped
+    volumes:
+      - ./opencode-mem.jsonc:/home/zeio/.config/opencode/opencode-mem.jsonc
+      - ./opencode.jsonc:/home/zeio/.config/opencode/opencode.jsonc
+      - ./AGENTS.md:/home/zeio/.config/opencode/AGENTS.md
+      - ../agents:/home/zeio/.config/opencode/agent
+      - ../commands:/home/zeio/.config/opencode/commands
+      - ../skills:/home/zeio/.config/opencode/skills
+      - ../plugins:/home/zeio/.config/opencode/plugins
+      - $HOME/.local/state/opencode:/home/zeio/.local/state/opencode
+      - $HOME/.local/share/opencode:/home/zeio/.local/share/opencode
+      - $HOME/.config/opencode:/home/zeio/.config/opencode
+      - $HOME/.cache/opencode:/home/zeio/.cache/opencode
+      - $HOME/.cache/huggingface/hub:/home/zeio/.cache/huggingface/hub
+    ports:
+      - 4747:4747  # opencode-mem UI
     env_file:
       - ../.env
       - .env

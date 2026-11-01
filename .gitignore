@@ -1,3 +1,5 @@
 .env
 .root-password
 .gitlab-token
+opencode.jsonc
+opencode-mem.jsonc

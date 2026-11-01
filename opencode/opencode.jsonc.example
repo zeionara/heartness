@@ -1,0 +1,68 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["/home/zeio/.config/opencode/AGENTS.md"],
+  "agent": {
+    "plan": {
+      "model": "provider/model-plan",
+      "variant": "default"
+    },
+    "build": {
+      "model": "provider/model-build",
+      "variant": "thinking"
+    }
+  },
+  "provider": {
+    "provider": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Provider",
+      "options": {
+        "baseURL": "{env:PROVIDER_URL}",
+        "apiKey": "{env:PROVIDER_TOKEN}"
+      },
+      "models": {
+        "model-build": {
+          "name": "model-build",
+          "reasoning": true,
+          "variants": {
+            "thinking": {
+              "chat_template_kwargs": {
+                "thinking_mode": "enabled"
+              }
+            }
+          },
+          "limit": {
+           "context": 17,
+           "output": 17
+          }
+        },
+        "model-plan": {
+          "name": "model-plan",
+          "reasoning": true,
+          "variants": {
+            "low": {
+              "chat_template_kwargs": {
+                "thinking_mode": "enabled"
+              },
+              "reasoning_effort": "low"
+            },
+            "high": {
+              "chat_template_kwargs": {
+                "thinking_mode": "enabled"
+              },
+              "reasoning_effort": "high"
+            },
+            "max": {
+              "chat_template_kwargs": {
+                "thinking_mode": "enabled"
+              },
+              "reasoning_effort": "max"
+            }
+          }
+        }
+      }
+    }
+  },
+  "plugins": [
+    "opencode-mem@latest"
+  ]
+}
