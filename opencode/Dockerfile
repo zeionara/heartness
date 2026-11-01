@@ -1,4 +1,4 @@
-# OPENCODE_VERSION=2.2.4; docker build . --secret id=ROOT_PASSWORD,src=.root-password -t zeio.ru/heartness:opencode-$OPENCODE_VERSION
+# OPENCODE_VERSION=2.2.4; docker build . --build-arg OPENCODE_VERSION=$OPENCODE_VERSION --secret id=ROOT_PASSWORD,src=.root-password -t zeio.ru/heartness:opencode-$OPENCODE_VERSION
 
 arg CUDA_VERSION="13.0.0"
 arg UBUNTU_VERSION="24.04"
@@ -44,6 +44,7 @@ user ${USER_NAME}
 arg OPENCODE_VERSION="2.2.4"
 
 run curl -fsSL https://opencode.ai/v2/install | bash -s -- -v $OPENCODE_VERSION
+env PATH="/home/${USER_NAME}/.opencode/bin:$PATH"
 
 # Configure dependencies
 

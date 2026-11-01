@@ -1,0 +1,17 @@
+services:
+  opencode:
+    image: zeio.ru/heartness:opencode-$OPENCODE_VERSION
+    container_name: opencode
+    restart: unless-stopped
+    env_file:
+      - ../.env
+      - .env
+    deploy:
+     resources:
+       reservations:
+         devices:
+           - driver: nvidia
+             count: all
+             capabilities:
+               - gpu
+    # network_mode: host  # only one opencode container can be running on a host if network_mode is set to host
