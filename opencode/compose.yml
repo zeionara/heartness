@@ -4,8 +4,8 @@ services:
     container_name: opencode
     restart: unless-stopped
     volumes:
-      - ./opencode-mem.jsonc:/home/zeio/.config/opencode/opencode-mem.jsonc
       - ./opencode.jsonc:/home/zeio/.config/opencode/opencode.jsonc
+      - ./opencode-mem.jsonc:/home/zeio/.config/opencode/opencode-mem.jsonc
       - ./AGENTS.md:/home/zeio/.config/opencode/AGENTS.md
       - ../agents:/home/zeio/.config/opencode/agent
       - ../commands:/home/zeio/.config/opencode/commands
@@ -16,6 +16,7 @@ services:
       - $HOME/.config/opencode:/home/zeio/.config/opencode
       - $HOME/.cache/opencode:/home/zeio/.cache/opencode
       - $HOME/.cache/huggingface/hub:/home/zeio/.cache/huggingface/hub
+      - $HOME/.opencode-mem:/home/zeio/.opencode-mem
     ports:
       - 4747:4747  # opencode-mem UI
     env_file:

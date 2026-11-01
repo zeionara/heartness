@@ -11,6 +11,7 @@ embedded installer's TLS handshakes.
 | OpenCode config (plugins) | `~/.config/opencode/opencode.jsonc` |
 | Plugin config | `~/.config/opencode/opencode-mem.jsonc` |
 | Plugin cache (seeded packages) | `~/.cache/opencode/packages/<pkg>@<version>/` |
+| Plugin runtime (as loaded) | `~/.cache/opencode/npm/<pkg>@<version>/<epoch-ms>/node_modules/<pkg>/` |
 | Memory store, model cache, token | `~/.opencode-mem/data/`, `~/.opencode-mem/data/.cache/`, `~/.opencode-mem/.auth-token` |
 | OpenCode logs | `~/.local/share/opencode/log/opencode.log` (`role=cli` / `role=server`) |
 | Plugin log | `~/.opencode-mem/opencode-mem.log` |
@@ -91,12 +92,30 @@ trap: the plugin fetched the 547 MB ONNX file successfully and died on
 `tokenizer.json`, so every later call failed while the big file sat there
 looking fine.
 
+The mirror case: the whole cache directory was deleted (e.g. wiped while
+resetting the data dir), so `onnx/model.onnx` is missing too and the
+plugin's own re-download dies mid-flight, leaving an empty `onnx/`
+directory. Symptom is an empty `onnx/` folder plus `tokenizer.json`
+absent. Re-fetch both with curl (~30 s for the model on a decent link),
+then restart the service:
+
+```sh
+D=~/.opencode-mem/data/.cache/Xenova/nomic-embed-text-v1
+B=https://huggingface.co/Xenova/nomic-embed-text-v1/resolve/main
+mkdir -p $D/onnx
+curl -fL --retry 3 -o $D/tokenizer.json $B/tokenizer.json
+curl -fL --retry 3 -o $D/onnx/model.onnx $B/onnx/model.onnx
+```
+
 Verify each file against the remote size:
 ```sh
 curl -sIL "https://huggingface.co/Xenova/nomic-embed-text-v1/resolve/main/onnx/model.onnx" \
   | grep -i content-length
 stat -c%s ~/.opencode-mem/data/.cache/Xenova/nomic-embed-text-v1/onnx/model.onnx
 ```
+
+Reference sizes: `tokenizer.json` = 711396 bytes,
+`onnx/model.onnx` = 547552426 bytes.
 
 ### Memoized warmup failures
 
