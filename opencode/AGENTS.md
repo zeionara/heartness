@@ -12,3 +12,4 @@
 
 3. Do not commit changes yourself, and do not stage them.
 4. When you create resources for testing, delete them yourself at the end of test.
+5. Do not print env variables with auth credentials before running scripts to check their values.
