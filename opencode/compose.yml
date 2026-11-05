@@ -18,8 +18,18 @@ services:
       - $HOME/.cache/huggingface/hub:/home/zeio/.cache/huggingface/hub
       - $HOME/.opencode-mem:/home/zeio/.opencode-mem
       # projects
+      - /opt/agent-ui:/opt/agent-ui
+      - /opt/pd_control:/opt/pd_control
       - /opt/lumin:/opt/lumin
       - $HOME/.cache/opencode-venv/lumin:/opt/lumin/.venv
+      - /opt/villm:/opt/villm
+      - $HOME/.cache/opencode-venv/villm:/opt/villm/.venv
+      - /opt/agent:/opt/agent
+      - $HOME/.cache/opencode-venv/agent:/opt/agent/.venv
+      - /opt/cheekup:/opt/cheekup
+      - $HOME/.cache/opencode-venv/cheekup:/opt/cheekup/.venv
+      - /opt/lux:/opt/lux
+      - $HOME/.cache/opencode-venv/lux:/opt/lux/.venv
     ports:
       - 4747:4747  # opencode-mem UI
     env_file:
