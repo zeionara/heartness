@@ -7,7 +7,7 @@ services:
       - ./opencode.jsonc:/home/zeio/.config/opencode/opencode.jsonc
       - ./opencode-mem.jsonc:/home/zeio/.config/opencode/opencode-mem.jsonc
       - ./AGENTS.md:/home/zeio/.config/opencode/AGENTS.md
-      - ../agents:/home/zeio/.config/opencode/agent
+      - ../agents:/home/zeio/.config/opencode/agents
       - ../commands:/home/zeio/.config/opencode/commands
       - ../skills:/home/zeio/.config/opencode/skills
       - ../plugins:/home/zeio/.config/opencode/plugins
@@ -20,6 +20,8 @@ services:
       # projects
       - /opt/agent-ui:/opt/agent-ui
       - /opt/pd_control:/opt/pd_control
+      - /opt/settings/claude/claude-config:/opt/claude-config
+      - /home/zeio/.oh-my-zsh/custom/shell/agents.zsh:/home/zeio/agents.zsh
       - /opt/lumin:/opt/lumin
       - $HOME/.cache/opencode-venv/lumin:/opt/lumin/.venv
       - /opt/villm:/opt/villm
