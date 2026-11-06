@@ -108,7 +108,8 @@ stays portable.
 
 ### Procedure
 
-1. Find the issue before starting. Search by id, title or service tag.
+1. Find the issue before starting: `plane_search` to locate it, `plane_get` to
+   read its title, state and description. Search by id, title or service tag.
 2. If the Plane tools are unavailable in the current session, ask the user to
    paste the issue text and continue — do not block the whole flow on it.
 3. The spec, plan and tasks are written in **English**. The issue title is

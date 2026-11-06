@@ -66,6 +66,9 @@ change. You never touch product code.
 
 If the issue id is missing, ask for it. Do not invent one.
 
+If the issue id is present but the issue text is not, read the issue yourself
+with `plane_get` (`plane_search` to locate it). Do not hand-roll API calls.
+
 ## Where you write
 
 Only inside `.sdd/<ISSUE_ID>/` in the repository. Create the folder if it does
