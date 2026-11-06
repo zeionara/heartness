@@ -15,9 +15,9 @@ services:
       - $HOME/.local/share/opencode:/home/zeio/.local/share/opencode
       - $HOME/.config/opencode:/home/zeio/.config/opencode
       - $HOME/.cache/opencode:/home/zeio/.cache/opencode
-      - $HOME/.cache/huggingface/hub:/home/zeio/.cache/huggingface/hub
+      - $HOME/.cache/huggingface:/home/zeio/.cache/huggingface
       - $HOME/.opencode-mem:/home/zeio/.opencode-mem
-      # projects
+      # projects (enterprise)
       - /opt/agent-ui:/opt/agent-ui
       - /opt/pd_control:/opt/pd_control
       - /opt/settings/claude/claude-config:/opt/claude-config
@@ -32,6 +32,9 @@ services:
       - $HOME/.cache/opencode-venv/cheekup:/opt/cheekup/.venv
       - /opt/lux:/opt/lux
       - $HOME/.cache/opencode-venv/lux:/opt/lux/.venv
+      # projects (experimental)
+      - /opt/marude:/opt/marude
+      - $HOME/.cache/opencode-venv/marude:/opt/marude/.venv
     ports:
       - 4747:4747  # opencode-mem UI
     env_file:
