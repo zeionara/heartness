@@ -1,13 +1,17 @@
 ---
 name: Env example
-description: Writing a `.env.example` file — Russian comments, no real values, required variables marked. Use when a project needs a `.env.example`, or when the set of environment variables changed.
+description: Writing a `.env.example` file — the project's language, no real values, required variables marked. Use when a project needs a `.env.example`, or when the set of environment variables changed.
 ---
 
 # The `.env.example` file
 
 A template of the environment variables. It is read by whoever deploys the
-project, so **the file you write is in Russian** (AGENTS.md rule 7) — the
-instructions here stay in English.
+project, so it is written in **Russian for an enterprise project** (GitLab
+remote) and in **English for an experimental one** (any other remote) — see
+AGENTS.md rule 7. The instructions here stay in English.
+
+The example below shows the enterprise case; an experimental project gets the
+same structure with English comments.
 
 ## Format
 
@@ -28,14 +32,16 @@ DEBUG=false
 1. **No real values.** Tokens, passwords, keys and URLs with credentials stay
    empty. Only non-secret defaults are allowed: ports, timeouts, flags, paths.
 2. **A comment above every variable** — what it is and whether it is required.
-   In Russian, one or two lines.
+   In the project's language, one or two lines: Russian for an enterprise
+   project, English for an experimental one.
 3. **Order by purpose**, not alphabetically: application first, then external
    services, then the database, then development settings. Alphabetical inside
    a group.
 4. **Names exactly as in the code.** Take them from the code (`os.environ`,
    `Settings`, `BaseSettings`); do not invent them.
-5. **Mark the required ones** with `# Обязательная переменная.` For an
-   optional one, state the default instead.
+5. **Mark the required ones** — `# Обязательная переменная.` in an enterprise
+   project, `# Required.` in an experimental one. For an optional one, state
+   the default instead.
 6. **File format** — `KEY=value`, one variable per line, no quotes around
    values, no `export`.
 7. **The template is committed; the real `.env` is not.** If a real `.env` is

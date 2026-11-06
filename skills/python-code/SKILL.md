@@ -20,8 +20,10 @@ the neighbouring modules before writing code.
 ## Code
 
 - English for everything in the repository: identifiers, comments, docstrings,
-  commit messages. Only the artefacts people read outside the team (README,
-  `.env.example`, Plane issues) are in Russian.
+  commit messages. The one exception is an **enterprise** project (GitLab
+  remote), where the artefacts people read outside the team — README,
+  `.env.example`, Plane issues — are in Russian. In an **experimental**
+  project (any other remote) everything is English, those artefacts included.
 - Type hints on public functions and dataclasses. The project may already have
   a convention — follow it instead of adding a second one.
 - Comments explain **why**, not what. If the code says what it does, delete the

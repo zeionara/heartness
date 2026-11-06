@@ -1,6 +1,6 @@
 ---
 name: README
-description: Writing a README — Russian, short, runnable, no marketing. Use when a project needs a README, or when an existing one has drifted from the code.
+description: Writing a README — the project's language, short, runnable, no marketing. Use when a project needs a README, or when an existing one has drifted from the code.
 ---
 
 # The README
@@ -8,8 +8,12 @@ description: Writing a README — Russian, short, runnable, no marketing. Use wh
 The first thing a new person sees. It answers four questions: what is this,
 what does it need, how do I run it, where do I look when it breaks.
 
-**The README you write is in Russian** (AGENTS.md rule 7) — the instructions
-here stay in English.
+It is written in **Russian for an enterprise project** (GitLab remote) and in
+**English for an experimental one** (any other remote) — see AGENTS.md rule 7.
+The instructions here stay in English.
+
+The example below shows the enterprise case; an experimental project gets the
+same structure with English headings and prose.
 
 ## Structure
 
@@ -56,8 +60,9 @@ ruff check .
 
 ## Rules
 
-1. **Russian throughout.** Headings, prose, comments in code blocks. Identifiers
-   and paths stay as they are in the code.
+1. **One language throughout.** Headings, prose, comments in code blocks. In an
+   enterprise project that is Russian, in an experimental one English.
+   Identifiers and paths stay as they are in the code.
 2. **The first line says what it is** — one sentence, no adjective.
 3. **Every command must work.** Copy the project's real commands from its
    config, not from memory. A README with a command that fails is worse than
