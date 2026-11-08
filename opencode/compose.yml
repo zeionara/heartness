@@ -35,6 +35,8 @@ services:
       # projects (experimental)
       - /opt/marude:/opt/marude
       - $HOME/.cache/opencode-venv/marude:/opt/marude/.venv
+      - $HOME/.cache/huggingface/datasets/baneks:/tmp/baneks
+      - $HOME/.cache/huggingface/datasets/baneks-speech:/tmp/baneks-speech
     ports:
       - 4747:4747  # opencode-mem UI
     env_file:

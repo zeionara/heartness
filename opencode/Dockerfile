@@ -8,9 +8,13 @@ from nvcr.io/nvidia/cuda:$CUDA_VERSION-cudnn-devel-ubuntu$UBUNTU_VERSION
 # Install system dependencies
 
 run apt-get update && \
-    apt-get install -y sudo python3 python3-pip python3-venv git curl ca-certificates vim \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv git curl ca-certificates vim \
     nodejs npm \
-    ffmpeg unzip git-lfs && \
+    ffmpeg unzip git-lfs \
+    python3.11 python3.11-venv && \
     rm -rf /var/lib/apt/lists/*
 
 # Set root password
@@ -25,10 +29,15 @@ run mkdir -p /home/${USER_NAME}/.config/opencode && chown -R ${USER_NAME}:${USER
 run mkdir -p /home/${USER_NAME}/.cache/huggingface && chown -R ${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.cache
 run mkdir -p /tmp/opencode && chown -R ${USER_NAME}:${USER_NAME} /tmp/opencode
 
-run curl -fsSL \
-    https://github.com/huggingface/xet-core/releases/download/git-xet-v0.2.1/git-xet-linux-x86_64.zip \
-    -o /tmp/git-xet.zip && \
-    mkdir /tmp/git-xet && \
+# run curl -fsSL \
+#     https://github.com/huggingface/xet-core/releases/download/git-xet-v0.2.1/git-xet-linux-x86_64.zip \
+#     -o /tmp/git-xet.zip && \
+#     mkdir /tmp/git-xet && \
+#     unzip /tmp/git-xet.zip -d /tmp/git-xet && \
+#     install -m 0755 /tmp/git-xet/git-xet /usr/local/bin/git-xet && \
+#     rm -rf /tmp/git-xet /tmp/git-xet.zip
+copy git-xet.zip /tmp/git-xet.zip
+run mkdir /tmp/git-xet && \
     unzip /tmp/git-xet.zip -d /tmp/git-xet && \
     install -m 0755 /tmp/git-xet/git-xet /usr/local/bin/git-xet && \
     rm -rf /tmp/git-xet /tmp/git-xet.zip
