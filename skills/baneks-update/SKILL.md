@@ -18,7 +18,8 @@ anekdots (`python -m rr handle-aneks`) is a separate procedure that needs the
 | What | Path |
 |---|---|
 | Project | `/opt/marude` |
-| Virtualenv | `/opt/marude/.venv` (self-healing, see step 0) |
+| Virtualenv | `/opt/marude/.venv` — shared with the `rr` speech stack, **Python 3.11** (see step 0) |
+| Speech stack requirements | `/opt/marude/submodules/raconteur/requirements.txt` |
 | Fetched anecdotes | `/opt/marude/assets/baneks/<DD.MM.YYYY>/` |
 | Dataset clone | `/tmp/baneks` (disposable, removed at the end) |
 | Dataset repo | `https://huggingface.co/datasets/zeio/baneks`, branch `main` |
@@ -56,7 +57,12 @@ value and do not create a token.
 5. **Never print `HF_TOKEN`** — not in command output, not in an error message.
    In particular, never run `git lfs env`: it prints the authenticated LFS
    endpoint with the token in plaintext.
-6. **Remove `/tmp/baneks` when the job is done**, successful or not.
+6. **Never install the project into the venv.** Run `python -m marude` from
+   `/opt/marude`, so the source tree is what executes. An editable install
+   shadows it and leaves an egg-info directory behind.
+7. **Remove `/tmp/baneks` when the job is done**, successful or not.
+8. **The shared venv's numpy and pandas belong to the speech stack.** Never
+   upgrade them, and never install marude's `requirements.txt` wholesale.
 
 ## Workflow
 
@@ -70,17 +76,89 @@ git lfs version
 git xet --version
 ```
 
-Check the virtualenv:
+#### The virtualenv is shared, and it is Python 3.11
+
+`/opt/marude/.venv` serves two toolchains at once:
+
+- the **marude text toolchain** — what this skill's fetch uses;
+- the **`rr` / `raconteur` speech stack** — installed from
+  `submodules/raconteur/requirements.txt`, which the user keeps as a frozen
+  snapshot of the venv.
+
+The speech stack requires **Python 3.11**. `scipy==1.16.3` and
+`scikit-learn==1.8.0` declare `Requires-Python: >=3.11`, and `numpy==1.25.2`
+has no distribution for 3.12 at all (PyPI starts that line at 1.26.0). The
+venv is therefore built with `python3.11` and its `numpy 1.25.2` / `pandas
+2.3.3` pins are the speech stack's — **not** marude's own `requirements.txt`,
+which pins `numpy==2.4.4` and `pandas==3.0.2`.
+
+Three consequences:
+
+1. **Never recreate the venv with another Python.** Use `python3.11`.
+2. **Never run `pip install -r requirements.txt`** against this venv. It would
+   upgrade numpy and pandas underneath the speech stack.
+3. **Install missing marude-side packages with `--no-deps`**, at the pins from
+   marude's `requirements.txt`. The shared venv keeps its own numpy and pandas.
 
 ```sh
 cd /opt/marude
-[ -x .venv/bin/python ] || {
-  python3 -m venv .venv
-  .venv/bin/python -m pip install --upgrade pip setuptools wheel
-  .venv/bin/python -m pip install -r requirements.txt
-  .venv/bin/python -m pip install -e . --no-deps
-  .venv/bin/python -c "import nltk; nltk.download('punkt_tab'); nltk.download('punkt')"
-}
+[ -x .venv/bin/python ] || python3.11 -m venv .venv
+.venv/bin/python --version   # must be 3.11.x
+```
+
+If the venv exists but the speech stack is missing (no `torch`), restore it
+from the submodule:
+
+```sh
+cd /opt/marude
+.venv/bin/python -m pip install -r submodules/raconteur/requirements.txt
+```
+
+Check that the fetch toolchain imports — `fetch.sh` needs `marude`, `tastier`,
+`nltk`, `pytaglib`, `ffmpeg`, `webrtcvad` and `pymorphy3`:
+
+```sh
+cd /opt/marude
+.venv/bin/python - <<'EOF'
+import importlib
+modules = ['tasty', 'nltk', 'taglib', 'ffmpeg', 'webrtcvad', 'pymorphy3', 'dawg_python', 'pandas', 'requests', 'click', 'tqdm', 'scipy', 'pydub']
+missing = []
+for module in modules:
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        missing.append(module)
+print('missing:', missing or 'none')
+EOF
+```
+
+If anything is missing, install it **without touching the versions already in
+the venv** — see consequence 3 above:
+
+```sh
+cd /opt/marude
+.venv/bin/python -m pip install --no-deps \
+  nltk==3.9.4 tastier==0.1.0 pytaglib==3.2.0 ffmpeg==1.4 webrtcvad-wheels==2.0.14 \
+  pymorphy3==2.0.6 pymorphy3-dicts-ru==2.4.417150.4580142 DAWG2-Python==0.9.0
+```
+
+Take the pins from marude's `requirements.txt` — the list above is the current
+one.
+
+The nltk tokenizers must be present — `marude/util/string.py` calls
+`sent_tokenize`:
+
+```sh
+cd /opt/marude
+.venv/bin/python -c "
+import nltk
+for resource in ('punkt', 'punkt_tab'):
+    try:
+        nltk.data.find(f'tokenizers/{resource}')
+        print(resource, 'present')
+    except LookupError:
+        nltk.download(resource)
+"
 ```
 
 Check the `fuck` submodule — `fetch.sh` ends with `python -m fuck stats`, which
@@ -224,5 +302,6 @@ its precondition was already met, say so.
 | A `.tsv` file reports `LFS POINTER` | The clone ran without the LFS smudge filter (`GIT_LFS_SKIP_SMUDGE=1`, or `git-lfs` missing). | Run `git lfs install`, then re-clone. A pointer file must never be pushed back — it would replace the dataset with a 130-byte stub. |
 | `xet transfer failed` / `custom transfer adapter 'xet' not found` | `git-xet` is missing or off `PATH` while the global git config registers it as the LFS transfer adapter. | Install git-xet and re-clone. git-lfs may silently fall back to the basic transfer, which is slower but still correct — check the row counts before trusting it. |
 | `KeyError: 'MARUDE_VK_API_KEY'` | `marude/Anecdote.py` reads the variable at import time. | Export it in the environment; the fetch does not use the key, but the import needs it to exist. |
+| `ModuleNotFoundError: No module named 'pymorphy3'` (or `tastier`, `nltk`, `taglib`) | The venv lacks part of the fetch toolchain — `fuck stats` imports `pymorphy3`, `marude` imports `nltk`/`tastier`/`taglib`. | Run the dependency check in step 0 and install the missing packages with `--no-deps`. Everything the fetch already wrote to `assets/baneks/<version>/` is still valid — only the failed step needs re-running, so there is no need to fetch again. |
 | `python -m fuck` not found | The `fuck` submodule is not checked out, so the `fuck` symlink dangles. | Run the submodule init from step 0. |
 | `FileNotFoundError` for `assets/baneks/<date>/` | `fetch.sh` was run from another directory — it uses relative paths. | Run it from `/opt/marude`. |
