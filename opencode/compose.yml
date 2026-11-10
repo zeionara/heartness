@@ -18,6 +18,7 @@ services:
       - $HOME/.cache/huggingface:/home/zeio/.cache/huggingface
       - $HOME/.opencode-mem:/home/zeio/.opencode-mem
       # projects (enterprise)
+      - /opt/promptu:/opt/promptu
       - /opt/agent-ui:/opt/agent-ui
       - /opt/pd_control:/opt/pd_control
       - /opt/settings/claude/claude-config:/opt/claude-config
@@ -32,7 +33,7 @@ services:
       - $HOME/.cache/opencode-venv/cheekup:/opt/cheekup/.venv
       - /opt/lux:/opt/lux
       - $HOME/.cache/opencode-venv/lux:/opt/lux/.venv
-      # projects (experimental)
+      # projects (personal)
       - /opt/marude:/opt/marude
       - $HOME/.cache/opencode-venv/marude:/opt/marude/.venv
       - $HOME/.cache/huggingface/datasets/baneks:/tmp/baneks
