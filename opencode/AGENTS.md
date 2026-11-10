@@ -18,7 +18,11 @@
 
 6. You are running in a docker container, which has no system packages like 'docker' or 'sudo' available. There are custom aliases for agentic systems, which are located at /home/zeio/agents.zsh. These aliases are configured on the host OS inside which the docker system with your container is running. The opencode sessions is usually run using alias 'opencode' from this file. You can suggest updates to the script for improving user experience.
 
-7. Language. Write in Russian anything a non-developer might read: Plane issue titles, descriptions and comments, README files, `.env.example`, and any other document meant for the team. Write in English everything else: SDD specs and plans, code, code comments, commit messages, and anything only the developer reads. When an artefact quotes an original Russian text (for example an issue title), quote it verbatim rather than translating it.
+7. Language. There are two kinds of projects, and the kind decides the language. The kind comes from the repository's origin remote — check it with `git remote get-url origin`:
+   - **Enterprise** — the remote is a GitLab instance (`gitlab.com` or the company's self-hosted GitLab). Write in Russian anything a non-developer might read: Plane issue titles, descriptions and comments, README files, `.env.example`, and any other document meant for the team. Write in English everything else: SDD specs and plans, code, code comments, commit messages, and anything only the developer reads. When an artefact quotes an original Russian text (for example an issue title), quote it verbatim rather than translating it.
+   - **Experimental** — the remote is any other host: GitHub, Codeberg, and so on. Everything is in English — code, comments, documentation, README files, `.env.example`, everything. These projects are not tracked in Plane.
+
+   If the repository has no remote, or the kind is unclear, ask the user instead of guessing.
 
 8. Spec-driven development. Non-trivial work — new behaviour, a change to an API or a data model, several files, more than about an hour, or anything the user is unsure about — goes through the `sdd` skill and the `/sdd/spec`, `/sdd/plan`, `/sdd/implement`, `/sdd/verify` commands. Work that can be described in one sentence skips SDD: just do it. Every phase ends at a gate; never start the next phase without an explicit approval from the user in the conversation.
 
