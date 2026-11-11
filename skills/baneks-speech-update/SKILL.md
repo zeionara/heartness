@@ -13,11 +13,12 @@ packed into archives of 1000 files.
 This skill is the **second half of a two-step pipeline**:
 
 1. `baneks-update` — fetch the anecdotes, publish the text dataset;
-2. `baneks-speech-update` — this skill — turn the fresh anecdotes into speech
-   and publish it.
+2. `baneks-speech-update` — this skill — turn the published anecdotes into
+   speech and publish it.
 
-Run `baneks-update` first. This skill consumes its output
-(`assets/baneks/<version>/default.tsv`) and does not repeat the text pipeline.
+This skill pulls the text dataset as-is and never re-fetches the anecdotes —
+that is the `baneks-update` skill's job. Run it first only when the anecdotes
+themselves need refreshing.
 
 ## Where things live
 
@@ -26,8 +27,9 @@ Run `baneks-update` first. This skill consumes its output
 | Project | `/opt/marude` |
 | Virtualenv | `/opt/marude/.venv` — shared with the `rr` speech stack, **Python 3.11** (see step 0) |
 | Speech stack requirements | `/opt/marude/submodules/raconteur/requirements.txt` |
-| Source anecdotes | `/opt/marude/assets/baneks/<DD.MM.YYYY>/default.tsv` |
-| Speech clone | `/tmp/baneks-speech` (disposable, removed at the end) |
+| Source anecdotes | `/tmp/baneks/default.tsv` (pulled from the text dataset) |
+| Text clone | `/tmp/baneks` — disposable, removed in step 13 |
+| Speech clone | `/tmp/baneks-speech` — disposable, removed in step 13 |
 | Extracted audio | `/tmp/baneks-speech/speech-extracted` |
 | Dataset repo | `https://huggingface.co/datasets/zeio/baneks-speech`, branch `main` |
 
@@ -55,9 +57,9 @@ value and do not create credentials.
 
 1. **The version is the run date**, formatted `DD.MM.YYYY` (`date +%d.%m.%Y`),
    and it is the same date the `baneks-update` run used.
-2. **Gate on `baneks-update`.** The source `default.tsv` for today's version
-   must exist before anything else starts. If it does not, run the
-   `baneks-update` skill first.
+2. **The text dataset is pulled as-is.** The generator reads
+   `/tmp/baneks/default.tsv` from the published text dataset. Refreshing the
+   anecdotes is the `baneks-update` skill's job — do not re-fetch them here.
 3. **A batch never exceeds 1000 files** (`_N_BATCH` in `baneks-speech.py`).
    Archive ranges are contiguous and the last range ends exactly at the new
    `_N_TOTAL`.
@@ -69,8 +71,9 @@ value and do not create credentials.
 7. **Never print `HF_TOKEN`** and never run `git lfs env`.
 8. **Commit only in the disposable clone** — `/tmp/baneks-speech`. The
    `/opt/marude` working tree is never touched by git.
-9. **Remove `/tmp/baneks-speech` when the job is done**, successful or not. It
-   holds tens of thousands of MP3 files.
+9. **Remove `/tmp/baneks` and `/tmp/baneks-speech` when the job is done.** They
+   are disposable. Keeping them is an exception the user grants for a
+   particular run — not the default. See step 13.
 10. **Partial generation is normal.** The engine stops at the first
     `GenerationException`; re-running resumes where it stopped.
 11. **A `503` from the TTS endpoint means the account is out of credits.** Stop
@@ -108,20 +111,25 @@ cd /opt/marude
 git submodule update --init --recursive
 ```
 
-### 1. The baneks-update gate
+### 1. Pull the text dataset
+
+The generator reads the anecdotes from the published text dataset. Pull it
+as-is — do not re-fetch the anecdotes, that is the `baneks-update` skill's job
+and it is a separate, slow step:
 
 ```sh
-cd /opt/marude
-VERSION="$(date +%d.%m.%Y)"
-SRC="assets/baneks/$VERSION/default.tsv"
-[ -f "$SRC" ] || { echo "no $SRC — run the baneks-update skill first"; exit 1; }
-wc -l < "$SRC"
+rm -rf /tmp/baneks
+git clone "https://zeio:${HF_TOKEN}@huggingface.co/datasets/zeio/baneks" /tmp/baneks
+cd /tmp/baneks
+head -c 20 default.tsv | grep -q "^version https://git-lfs" && { echo "default.tsv: LFS POINTER"; exit 1; }
+wc -l < default.tsv
+grep -n "VERSION = Version" baneks.py
 ```
 
-Use this file as the generator input. (`/tmp/baneks/default.tsv` works only if
-the `baneks-update` clone was left in place — that skill cleans it up.)
+`/tmp/baneks/default.tsv` is the generator input. If the text dataset needs
+refreshing for today, run the `baneks-update` skill first and pull it again.
 
-### 2. Pull the dataset
+### 2. Pull the speech dataset
 
 ```sh
 rm -rf /tmp/baneks-speech
@@ -173,12 +181,28 @@ find ./speech-extracted -maxdepth 1 -type f -printf '%f\n' | sort > /tmp/speech-
 wc -l < /tmp/speech-manifest-before.txt
 ```
 
+Keep a **published baseline** — the list of files the dataset on the hub
+already contains. A run that stops on a `503` and is resumed later accumulates
+clips across several runs, and the next publish must add *all* of them, not
+just the last run's:
+
+```sh
+cp /tmp/speech-manifest-before.txt /tmp/speech-manifest-published.txt
+```
+
+If `/tmp/speech-manifest-published.txt` already exists, keep it — it is the
+baseline from the last publish. When publishing, the clips to add are:
+
+```sh
+comm -13 /tmp/speech-manifest-published.txt /tmp/speech-manifest-ondisk.txt > /tmp/speech-unpublished.txt
+```
+
 ### 5. Generate the speech
 
 ```sh
 cd /opt/marude
 .venv/bin/python -m rr handle-aneks \
-  -s /opt/marude/assets/baneks/"$(date +%d.%m.%Y)"/default.tsv \
+  -s /tmp/baneks/default.tsv \
   -d /tmp/baneks-speech/speech-extracted \
   -e vk -rkv
 ```
@@ -196,6 +220,29 @@ already exists, so the second run continues where the first stopped — but only
 after the cause is fixed. A `503` means the VK Cloud balance is empty: stop and
 ask the user to top it up, then re-run.
 
+When credit arrives in small lots, a single run is not enough — wrap the
+generator in a retry loop so every lot gets used and the loop ends by itself
+when the set is complete:
+
+```sh
+# /tmp/generate-remaining.sh
+cd /opt/marude
+PY=/opt/marude/.venv/bin/python
+while true; do
+  missing="$($PY -c "
+import os, pandas as pd
+df = pd.read_csv('/tmp/baneks/default.tsv', sep='\t')
+d = '/tmp/baneks-speech/speech-extracted'
+print(sum(1 for _, r in df.iterrows() if not os.path.isfile(os.path.join(d, f'{r[\"id\"]:08d}.{r[\"source\"]}.mp3'))))
+")"
+  [ "$missing" = "0" ] && break
+  $PY -m rr handle-aneks -s /tmp/baneks/default.tsv -d /tmp/baneks-speech/speech-extracted -e vk -rkv
+  sleep 180
+done
+```
+
+The loop generates but never publishes — publishing stays a deliberate step.
+
 Two failure families look alike but need different fixes:
 
 | Message | Endpoint | Cause |
@@ -207,14 +254,23 @@ Two failure families look alike but need different fixes:
 
 ```sh
 cd /tmp/baneks-speech
-find ./speech-extracted -maxdepth 1 -type f -printf '%f\n' | sort > /tmp/speech-manifest-after.txt
-comm -13 /tmp/speech-manifest-before.txt /tmp/speech-manifest-after.txt > /tmp/speech-new-files.txt
+find ./speech-extracted -maxdepth 1 -type f -printf '%f\n' | sort > /tmp/speech-manifest-ondisk.txt
+comm -13 /tmp/speech-manifest-before.txt /tmp/speech-manifest-ondisk.txt > /tmp/speech-new-files.txt
 wc -l < /tmp/speech-new-files.txt
 ```
 
 The count **must** equal the `Handled N aneks` number from step 5. If it does
 not, something else wrote into the directory — stop and report, do not
 continue.
+
+When the run is a **resume** of an earlier one that stopped on a `503`, the
+clips to publish are the ones missing from the published baseline, not just
+this run's:
+
+```sh
+comm -13 /tmp/speech-manifest-published.txt /tmp/speech-manifest-ondisk.txt > /tmp/speech-new-files.txt
+wc -l < /tmp/speech-new-files.txt
+```
 
 ### 7. Repack the trailing batch
 
@@ -228,10 +284,17 @@ FIRST="$(basename "$TRAILING" .tar.xz | cut -d- -f1)"
 LAST="$(basename "$TRAILING" .tar.xz | cut -d- -f2)"
 echo "trailing archive: $TRAILING ($FIRST-$LAST)"
 
+# clear the batch directories first — a previous publish left its own files
+# behind, and extracting into a populated directory mixes them into the batch
+rm -rf speech-extracted-trailing-batch speech-extracted-next-batch-*
 mkdir speech-extracted-trailing-batch
 tar -xJvf "$TRAILING" -C ./speech-extracted-trailing-batch
 ls speech-extracted-trailing-batch | wc -l
 ```
+
+The count after the extraction must equal the trailing archive's range width
+(`LAST - FIRST + 1`). Anything else means stale files got mixed in — start
+this step over.
 
 Copy the new files into it. **Use `cp -p`** — it preserves the creation times,
 and the split in the next step is ordered by exactly those. A plain `cp` gives
@@ -303,6 +366,11 @@ the update and `N` = number of new files:
   remainder
 - the ranges are contiguous: trailing starts at its old first index, and each
   following archive starts where the previous one ended
+
+`_N_TOTAL` counts the **files in the dataset**, not the rows of the text
+dataset. The speech dataset may hold a few clips for anecdotes the text
+dataset no longer has (its dedup drops rows between versions), so the file
+count can exceed the row count. Trust the file count.
 
 ### 9. Create the archives
 
@@ -401,9 +469,23 @@ background.
 
 ### 13. Clean up
 
+The clones are disposable — remove them once the dataset is published:
+
 ```sh
-rm -rf /tmp/baneks-speech
+du -sh /tmp/baneks /tmp/baneks-speech
+rm -rf /tmp/baneks /tmp/baneks-speech
+rm -f /tmp/speech-manifest-before.txt /tmp/speech-manifest-ondisk.txt \
+      /tmp/speech-manifest-published.txt /tmp/speech-new-files.txt \
+      /tmp/speech-unpublished.txt /tmp/trailing-newest-first.txt \
+      /tmp/overflow-oldest-first.txt /tmp/batch-01-oldest-first.txt
 ```
+
+Keeping them is an **exception the user grants for a particular run**, not the
+default. Two reasons it comes up: the run stopped on a `503` and more credit
+is expected, so the next attempt should resume from the extracted audio
+instead of cloning and extracting several gigabytes again; or the user wants
+to inspect the result before it is deleted. Ask before keeping them, and say
+how much disk they hold.
 
 ## Report
 
@@ -419,7 +501,8 @@ already met, say so.
 | `LFS POINTER` on an archive | The clone ran without the LFS smudge filter, or the token is invalid. | Install git-lfs and git-xet, check the token, re-clone. Never push a pointer — it replaces a 70 MB archive with a 130-byte stub. |
 | `Clone succeeded, but checkout failed` | The token is invalid or expired; the public repo clones, only the LFS download fails. | Stop and ask the user for a fresh `HF_TOKEN`. |
 | `KeyError: 'VK_CLOUD_CLIENT_ID'` | The engine credentials are not in the environment. | Export them; never hardcode them into a file in the repo. |
-| `Failed generation due to exception: Unexpected response status: 503 (b'503: Service Unavailable')` | The VK Cloud account has no credits left. The token is fine — the synthesis endpoint refuses the billable call. | Stop. Ask the user to top up the VK Cloud balance; retrying without a top-up fails identically. Afterwards re-run the same command: `-k` resumes at the anecdote that failed. |
+| `Failed generation due to exception: Unexpected response status: 503 (b'503: Service Unavailable')` | The VK Cloud account has no credits left. The token is fine — the synthesis endpoint refuses the billable call. | Stop. Ask the user to top up the VK Cloud balance; retrying without a top-up fails identically. If credit arrives in small lots, run the retry loop above. Afterwards re-run the same command: `-k` resumes at the anecdote that failed. |
+| The balance tops up but only a handful of clips go through per attempt | The allowance is metered in characters or has a per-period cap — the API exposes no balance or quota endpoint to confirm it (`/api/v1/{account,usage,quota,billing,balance,limits}` all 404), so the console is the only source of truth. | Use the retry loop: each attempt consumes whatever credit is available and the next attempt picks up where it stopped. |
 | `Failed generation due to exception: Unexpected response status: 403 …` | The credentials are valid but the model is not allowed for this account. | Check the model (`katherine-hifigan` by default) and the account's access to it. |
 | The generator regenerates thousands of files | The archives were not extracted into the destination before the run. | Extract everything into `speech-extracted` first, then generate. |
 | The manifest count differs from `Handled N aneks` | Something else wrote into the extraction directory, or the run was interrupted mid-write. | Stop and report; do not repack on a mismatch. |
