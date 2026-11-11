@@ -82,8 +82,8 @@ git xet --version
 
 - the **marude text toolchain** — what this skill's fetch uses;
 - the **`rr` / `raconteur` speech stack** — installed from
-  `submodules/raconteur/requirements.txt`, which the user keeps as a frozen
-  snapshot of the venv.
+  `submodules/raconteur/requirements.txt`, which stays in sync with the venv
+  and is the source of truth for what is installed there.
 
 The speech stack requires **Python 3.11**. `scipy==1.16.3` and
 `scikit-learn==1.8.0` declare `Requires-Python: >=3.11`, and `numpy==1.25.2`
@@ -100,6 +100,10 @@ Three consequences:
 3. **Install missing marude-side packages with `--no-deps`**, at the pins from
    marude's `requirements.txt`. The shared venv keeps its own numpy and pandas.
 
+The two requirement sets are disjoint: the speech stack's file contains none of
+the marude-side packages (`nltk`, `tastier`, `pytaglib`, `ffmpeg`,
+`webrtcvad-wheels`, `pymorphy3`), so restoring one never clobbers the other.
+
 ```sh
 cd /opt/marude
 [ -x .venv/bin/python ] || python3.11 -m venv .venv
@@ -107,7 +111,8 @@ cd /opt/marude
 ```
 
 If the venv exists but the speech stack is missing (no `torch`), restore it
-from the submodule:
+from the submodule. The requirements file is in sync with the venv, so this
+reproduces the stack exactly:
 
 ```sh
 cd /opt/marude
