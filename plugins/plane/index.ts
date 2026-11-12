@@ -2,6 +2,8 @@ import { Plugin } from "@opencode/plugin"
 
 type Json = Record<string, any>
 
+// One limit for read truncation in get and the write cap in set_description,
+// so a description written through the tools always displays in full.
 const MAX_DESCRIPTION = 4000
 const MAX_COMMENT = 10000
 const SEARCH_PAGE_SIZE = 200
@@ -79,20 +81,165 @@ function issueUrl(cfg: PlaneConfig, prefix: string, sequenceId: number): string 
   return `${cfg.url}/${cfg.workspace}/browse/${prefix}-${sequenceId}/`
 }
 
-function stripHtml(html: string | null | undefined): string {
-  if (!html) return ""
-  const text = html
-    .replace(/<image-component[^>]*>/g, " [image] ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
+function unescapeHtml(text: string): string {
+  return text
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&")
-  return text.replace(/\n{3,}/g, "\n\n").trim()
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+// Renders stored HTML back to the Markdown the tools accept, so issue text
+// written through the tools reads back in the shape it was written.
+function stripHtml(html: string | null | undefined): string {
+  if (!html) return ""
+  const fences: string[] = []
+  const text = html
+    .replace(/<image-component[^>]*>/g, " [image] ")
+    .replace(
+      /<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/gi,
+      (_, attrs: string, code: string) => {
+        const lang = (attrs.match(/class="language-([^"]*)"/) ?? [])[1]
+        fences.push(`\`\`\`${lang ?? ""}\n${unescapeHtml(code)}\n\`\`\``)
+        return `\x00fence${fences.length - 1}\x00`
+      },
+    )
+    .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, inner: string) =>
+      inner.replace(/<li[^>]*>/gi, "- ").replace(/<\/li>\s*/gi, "\n") + "\n",
+    )
+    .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, inner: string) => {
+      let n = 0
+      return inner.replace(/<li[^>]*>/gi, () => `${++n}. `).replace(/<\/li>\s*/gi, "\n") + "\n"
+    })
+    .replace(/<h([1-6])[^>]*>/gi, (_, level: string) => `${"#".repeat(Number(level))} `)
+    .replace(/<\/h[1-6]>\s*/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*/gi, "\n\n")
+    .replace(/<hr\s*\/?>/gi, "\n---\n\n")
+    .replace(/<\/?(blockquote|strong|em|s|a)(\s[^>]*)?>/gi, "")
+    .replace(/<\/?code[^>]*>/gi, "`")
+    .replace(/<[^>]+>/g, "")
+  const collapsed = unescapeHtml(text).replace(/\n{3,}/g, "\n\n").trim()
+  return collapsed.replace(/\x00fence(\d+)\x00/g, (_, i: string) => fences[Number(i)])
+}
+
+// Inline Markdown → HTML. Code spans and links are extracted first so their
+// content never meets the emphasis rules; \x00 atoms hold the finished HTML.
+function inlineMarkdown(text: string): string {
+  const atoms: string[] = []
+  let s = text.replace(/`([^`]+)`/g, (_, code: string) => {
+    atoms.push(`<code>${escapeHtml(code)}</code>`)
+    return `\x00atom${atoms.length - 1}\x00`
+  })
+  s = s.replace(/\[([^\]]+)\]\(([^()\s]+)\)/g, (_, label: string, url: string) => {
+    atoms.push(`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`)
+    return `\x00atom${atoms.length - 1}\x00`
+  })
+  s = escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^\s*][^*]*?)\*/g, "<em>$1</em>")
+    .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+  return s.replace(/\x00atom(\d+)\x00/g, (_, i: string) => atoms[Number(i)])
+}
+
+// Markdown → the HTML dialect the Plane editor keeps (verified live: h1–h6,
+// strong/em/s, code, pre>code, ul/ol items, a[href], blockquote, hr).
+// Supported source: # headings, blank-line paragraphs, `code`, **bold**,
+// *italic*, ~~strike~~, fenced code blocks, - / 1. lists, > quotes,
+// [links](url) and --- rules.
+function markdownToPlaneHtml(text: string): string {
+  const out: string[] = []
+  let para: string[] = []
+  let quote: string[] = []
+  let list: { tag: "ul" | "ol"; items: string[] } | null = null
+  let fence: { lang: string; body: string[] } | null = null
+
+  const flush = () => {
+    if (para.length) out.push(`<p>${para.map((line) => inlineMarkdown(line)).join("<br>")}</p>`)
+    para = []
+    if (list) {
+      out.push(`<${list.tag}>${list.items.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</${list.tag}>`)
+      list = null
+    }
+    if (quote.length) {
+      out.push(`<blockquote><p>${quote.map((line) => inlineMarkdown(line)).join("<br>")}</p></blockquote>`)
+      quote = []
+    }
+  }
+
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    if (fence) {
+      if (/^\s*```/.test(raw)) {
+        const attrs = fence.lang ? ` class="language-${escapeHtml(fence.lang)}"` : ""
+        out.push(`<pre><code${attrs}>${escapeHtml(fence.body.join("\n"))}</code></pre>`)
+        fence = null
+      } else {
+        fence.body.push(raw)
+      }
+      continue
+    }
+    const fenceStart = raw.match(/^\s*```(\S*)\s*$/)
+    if (fenceStart) {
+      flush()
+      fence = { lang: fenceStart[1], body: [] }
+      continue
+    }
+    if (!raw.trim()) {
+      flush()
+      continue
+    }
+    const heading = raw.match(/^(#{1,6})\s+(.+)$/)
+    if (heading) {
+      flush()
+      const level = heading[1].length
+      out.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`)
+      continue
+    }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(raw)) {
+      flush()
+      out.push("<hr>")
+      continue
+    }
+    const bullet = raw.match(/^\s*[-*]\s+(.+)$/)
+    if (bullet) {
+      if (!list || list.tag !== "ul") {
+        flush()
+        list = { tag: "ul", items: [] }
+      }
+      list.items.push(bullet[1])
+      continue
+    }
+    const numbered = raw.match(/^\s*\d+[.)]\s+(.+)$/)
+    if (numbered) {
+      if (!list || list.tag !== "ol") {
+        flush()
+        list = { tag: "ol", items: [] }
+      }
+      list.items.push(numbered[1])
+      continue
+    }
+    const quoted = raw.match(/^>\s?(.*)$/)
+    if (quoted) {
+      if (!quote.length) flush()
+      quote.push(quoted[1])
+      continue
+    }
+    flush()
+    para.push(raw.trimEnd())
+  }
+  if (fence) {
+    const attrs = fence.lang ? ` class="language-${escapeHtml(fence.lang)}"` : ""
+    out.push(`<pre><code${attrs}>${escapeHtml(fence.body.join("\n"))}</code></pre>`)
+    fence = null
+  }
+  flush()
+  return out.join("")
 }
 
 function displayName(person: any): string {
@@ -101,6 +248,16 @@ function displayName(person: any): string {
   const full = [person.first_name, person.last_name].filter(Boolean).join(" ").trim()
   // Prefer the real name: on some instances display_name is the email local part.
   return full || person.display_name || person.email || person.id
+}
+
+// Workspace member id → display name; ids outside the workspace stay raw.
+async function fetchMemberNames(cfg: PlaneConfig, signal?: AbortSignal): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  const members = await api(cfg, `/workspaces/${cfg.workspace}/members/`, {}, signal)
+  for (const member of Array.isArray(members) ? members : []) {
+    names.set(String(member.id), displayName(member))
+  }
+  return names
 }
 
 function expandedState(issue: Json): string {
@@ -275,13 +432,9 @@ export default Plugin.define({
             }
           }
 
-          const memberNames = new Map<string, string>()
-          if (matches.some((issue) => Array.isArray(issue.assignees) && issue.assignees.length)) {
-            const members = await api(cfg, `/workspaces/${cfg.workspace}/members/`, {}, context?.signal)
-            for (const member of Array.isArray(members) ? members : []) {
-              memberNames.set(String(member.id), displayName(member))
-            }
-          }
+          const memberNames = matches.some((issue) => Array.isArray(issue.assignees) && issue.assignees.length)
+            ? await fetchMemberNames(cfg, context?.signal)
+            : new Map<string, string>()
 
           const lines = matches.map((issue) => {
             const key = `${prefix}-${issue.sequence_id}`
@@ -301,7 +454,7 @@ export default Plugin.define({
       editor.add({
         name: "get",
         description:
-          `Get one Plane issue by key (${keyHint}), sequence number (123) or UUID. Returns the title, state, priority, assignees, labels, description as plain text and the canonical issue URL. Use it before changing anything.`,
+          `Get one Plane issue by key (${keyHint}), sequence number (123) or UUID. Returns the title, state, priority, assignees, labels, the description converted back to Markdown and the canonical issue URL. Use it before changing anything.`,
         input: {
           type: "object",
           properties: {
@@ -322,9 +475,70 @@ export default Plugin.define({
       })
 
       editor.add({
+        name: "list_comments",
+        description:
+          `List all comments on a Plane issue by key (${keyHint}), sequence number (123) or UUID, oldest first. ` +
+          "Each comment shows the author, creation time and the body converted back to Markdown. Read-only, use it to catch up on a discussion before writing.",
+        input: {
+          type: "object",
+          properties: {
+            issue: {
+              type: "string",
+              description: `Issue key (${keyHint}), sequence number (123) or issue UUID.`,
+            },
+          },
+          required: ["issue"],
+          additionalProperties: false,
+        },
+        options: { codemode: true },
+        execute: async (input: any, context: any) => {
+          const cfg = config()
+          const { issue, prefix } = await resolveIssue(cfg, String(input.issue), context?.signal)
+
+          const comments: Json[] = []
+          let cursor: string | undefined
+          for (let page = 0; page < SEARCH_MAX_PAGES; page++) {
+            const params = new URLSearchParams({ per_page: String(SEARCH_PAGE_SIZE) })
+            if (cursor) params.set("cursor", cursor)
+            const data = await api(
+              cfg,
+              `/workspaces/${cfg.workspace}/projects/${cfg.project}/work-items/${issue.id}/comments/?${params}`,
+              {},
+              context?.signal,
+            )
+            const results: Json[] = data?.results ?? []
+            comments.push(...results)
+            cursor = data?.next_cursor ?? undefined
+            // This endpoint emits next_cursor even on the last page;
+            // next_page_results === false marks it and skips a wasted fetch.
+            if (!cursor || results.length === 0 || data?.next_page_results === false) break
+          }
+
+          const key = `${prefix}-${issue.sequence_id}`
+          const url = issueUrl(cfg, prefix, issue.sequence_id)
+          if (!comments.length) return { content: `No comments on ${key}: ${url}` }
+
+          comments.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")))
+          const memberNames = await fetchMemberNames(cfg, context?.signal)
+
+          const blocks = comments.map((comment, i) => {
+            const actor = comment.actor
+            const author = typeof actor === "string" ? (memberNames.get(actor) ?? actor) : displayName(actor)
+            const when = String(comment.created_at ?? "unknown time")
+            const body = stripHtml(comment.comment_html)
+            const shown = body.length > MAX_DESCRIPTION ? `${body.slice(0, MAX_DESCRIPTION)}\n…[truncated]` : body
+            return `[${i + 1}] ${author}, ${when}\n${shown}`
+          })
+          return { content: `${key} — ${comments.length} comment(s): ${url}\n\n${blocks.join("\n\n")}` }
+        },
+      })
+
+      editor.add({
         name: "comment",
         description:
-          "Post a comment on a Plane issue. This writes to a shared tracker — confirm the exact text with the user before calling it. Write the comment body in Russian unless the user asks otherwise.",
+          "Post a comment on a Plane issue. This writes to a shared tracker — confirm the exact text with the user before calling it. " +
+          "The body is Markdown (`##` headings, `code` for field names, fenced code blocks, **bold**, lists). " +
+          "Write the comment in Russian unless the user asks otherwise.",
         input: {
           type: "object",
           properties: {
@@ -334,7 +548,8 @@ export default Plugin.define({
             },
             body: {
               type: "string",
-              description: "Comment body in plain text. Paragraphs are separated by blank lines.",
+              description:
+                "Comment body in Markdown. Blank lines separate paragraphs; `##` headings, `code` for field names, fenced code blocks, **bold** and lists are rendered.",
             },
           },
           required: ["issue", "body"],
@@ -350,19 +565,7 @@ export default Plugin.define({
           }
           const { issue, prefix } = await resolveIssue(cfg, String(input.issue), context?.signal)
 
-          const paragraphs = body
-            .split(/\n{2,}/)
-            .map((paragraph) => paragraph.trim())
-            .filter(Boolean)
-            .map(
-              (paragraph) =>
-                `<p>${paragraph
-                  .replace(/&/g, "&amp;")
-                  .replace(/</g, "&lt;")
-                  .replace(/>/g, "&gt;")
-                  .replace(/\n/g, "<br>")}</p>`,
-            )
-            .join("")
+          const paragraphs = markdownToPlaneHtml(body)
 
           const comment = await api(
             cfg,
@@ -375,6 +578,51 @@ export default Plugin.define({
             content: `Comment posted on ${key}: ${issueUrl(cfg, prefix, issue.sequence_id)}${
               comment?.id ? `\ncomment id: ${comment.id}` : ""
             }`,
+          }
+        },
+      })
+
+      editor.add({
+        name: "set_description",
+        description:
+          "Replace the description of a Plane issue. This replaces the whole description, not appends to it, and an empty text is rejected. " +
+          "The body is Markdown (`##` headings, `code` for field names, fenced code blocks, **bold**, lists). This writes to a shared tracker — " +
+          "confirm the exact text with the user before calling it. Write the description in Russian unless the user asks otherwise.",
+        input: {
+          type: "object",
+          properties: {
+            issue: {
+              type: "string",
+              description: `Issue key (${keyHint}), sequence number (123) or issue UUID.`,
+            },
+            description: {
+              type: "string",
+              description:
+                "New description body in Markdown. Blank lines separate paragraphs; `##` headings, `code` for field names, fenced code blocks, **bold** and lists are rendered. Replaces the existing description entirely.",
+            },
+          },
+          required: ["issue", "description"],
+          additionalProperties: false,
+        },
+        options: { codemode: true },
+        execute: async (input: any, context: any) => {
+          const cfg = config()
+          const body = String(input.description ?? "").trim()
+          if (!body) throw new Error("Plane: the description is empty")
+          if (body.length > MAX_DESCRIPTION) {
+            throw new Error(`Plane: the description is ${body.length} characters, the limit is ${MAX_DESCRIPTION}`)
+          }
+          const { issue, prefix } = await resolveIssue(cfg, String(input.issue), context?.signal)
+
+          await api(
+            cfg,
+            `/workspaces/${cfg.workspace}/projects/${cfg.project}/work-items/${issue.id}/`,
+            { method: "PATCH", body: JSON.stringify({ description_html: markdownToPlaneHtml(body) }) },
+            context?.signal,
+          )
+          const key = `${prefix}-${issue.sequence_id}`
+          return {
+            content: `Description replaced on ${key}: ${issueUrl(cfg, prefix, issue.sequence_id)}`,
           }
         },
       })
