@@ -1,2 +1,6 @@
 include:
   - opencode/compose.yml
+networks:
+  heartness:
+    driver: bridge
+    name: heartness

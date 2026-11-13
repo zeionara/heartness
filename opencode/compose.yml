@@ -33,6 +33,8 @@ services:
       - $HOME/.cache/opencode-venv/cheekup:/opt/cheekup/.venv
       - /opt/lux:/opt/lux
       - $HOME/.cache/opencode-venv/lux:/opt/lux/.venv
+      - /opt/graph:/opt/graph
+      - $HOME/.cache/opencode-venv/graph:/opt/graph/.venv
       # projects (personal)
       - /opt/marude:/opt/marude
       - $HOME/.cache/opencode-venv/marude:/opt/marude/.venv
@@ -40,6 +42,8 @@ services:
       - $HOME/.cache/huggingface/datasets/baneks-speech:/tmp/baneks-speech
     ports:
       - 4747:4747  # opencode-mem UI
+    networks:
+      - heartness
     env_file:
       - ../.env
       - .env
